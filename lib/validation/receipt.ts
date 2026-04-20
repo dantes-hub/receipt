@@ -1,5 +1,5 @@
 import type { ExtractedReceiptData, ReceiptValidationField, ReceiptValidationReport, ValidationResult } from '@/types/receipt'
-import { validateInvoiceNumber, validateTaxCalculation, validateTaxId } from '@/lib/validators'
+import { validateInvoiceNumber, validateTaxCalculation, validateTaxId, getInvoicePeriod } from '@/lib/validators'
 import { lookupCompanyByUbn } from '@/lib/moea/lookup'
 
 type FieldValidationMap = Record<ReceiptValidationField, ValidationResult[]>
@@ -109,6 +109,14 @@ function validateAmountsForUniformInvoice(receipt: ExtractedReceiptData, fields:
   if (receipt.subtotal === 0 && receipt.tax === 0 && receipt.total === 0) {
     addValidationResult(fields, 'tax', 'warn', '金額皆為 0，請人工確認')
     addValidationResult(fields, 'total', 'warn', '金額皆為 0，請人工確認')
+    return
+  }
+
+  // Consumer e-invoice copy (電子發票證明聯) only shows total, not tax breakdown
+  if (receipt.subtotal === 0 && receipt.tax === 0 && receipt.total > 0) {
+    addValidationResult(fields, 'subtotal', 'warn', '電子發票證明聯通常不含稅額拆分')
+    addValidationResult(fields, 'tax', 'warn', '電子發票證明聯通常不含稅額拆分')
+    addValidationResult(fields, 'total', 'pass', `總金額 NT$${receipt.total} 已擷取`)
     return
   }
 
@@ -236,8 +244,9 @@ export function validateReceipt(extractedData: ExtractedReceiptData): ReceiptVal
       invoiceNumberResult.valid ? '發票號碼格式正確' : invoiceNumberResult.error ?? '發票號碼驗證失敗'
     )
 
-    if (invoiceNumberResult.period) {
-      addValidationResult(fields, 'invoiceNumber', 'pass', `期別: ${invoiceNumberResult.period}`)
+    const period = getInvoicePeriod(extractedData.invoiceDate)
+    if (invoiceNumberResult.valid && period) {
+      addValidationResult(fields, 'invoiceNumber', 'pass', `期別: ${period}`)
     }
 
     validateAmountsForUniformInvoice(extractedData, fields)

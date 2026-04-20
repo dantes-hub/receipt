@@ -1,4 +1,4 @@
-const MOEA_API_URL = 'https://data.gcis.nat.gov.tw/od/data/api/9D17AE0D-09B5-4732-A943-5C7B3EA14E41'
+const MOEA_API_URL = 'https://data.gcis.nat.gov.tw/od/data/api/236EE382-4942-41A9-BD03-CA0709025E7C'
 const MOEA_TIMEOUT_MS = 5000
 
 export interface MoeaCompany {
@@ -38,7 +38,15 @@ export async function lookupCompanyByUbn(ubn: string): Promise<MoeaLookupResult>
       return { found: false, error: `MOEA API returned ${res.status}` }
     }
 
-    const data: MoeaApiRow[] = await res.json()
+    const text = await res.text()
+    if (!text || text.trim() === '') return { found: false }
+
+    let data: MoeaApiRow[]
+    try {
+      data = JSON.parse(text)
+    } catch {
+      return { found: false, error: '政府資料庫回傳格式錯誤' }
+    }
 
     if (!Array.isArray(data) || data.length === 0) {
       return { found: false }

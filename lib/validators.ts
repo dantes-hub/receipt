@@ -40,20 +40,29 @@ export function validateTaxId(taxId: string): { valid: boolean; error?: string }
  * Taiwan Invoice Number (發票號碼) format validation
  * Format: 2 uppercase letters + 8 digits (e.g., AB12345678)
  */
-export function validateInvoiceNumber(invoiceNumber: string): { valid: boolean; error?: string; period?: string } {
+export function validateInvoiceNumber(invoiceNumber: string): { valid: boolean; error?: string } {
   const cleaned = invoiceNumber.toUpperCase().replace(/[\s-]/g, '')
-  
-  // Must be 2 letters + 8 digits
+
   if (!/^[A-Z]{2}\d{8}$/.test(cleaned)) {
     return { valid: false, error: '發票號碼格式錯誤，應為 2 字母 + 8 數字' }
   }
-  
-  // Extract period from first two letters (simplified logic)
-  // In reality, this would need a lookup table for invoice number ranges
-  return { 
-    valid: true, 
-    period: '115年 03-04 月' // This would be dynamic in real implementation
-  }
+
+  return { valid: true }
+}
+
+export function getInvoicePeriod(invoiceDate: string): string | null {
+  const match = invoiceDate.match(/^(\d{4})-(\d{2})-\d{2}$/)
+  if (!match) return null
+
+  const year = parseInt(match[1], 10)
+  const month = parseInt(match[2], 10)
+  if (year < 1912 || month < 1 || month > 12) return null
+
+  const rocYear = year - 1911
+  const periodStart = month % 2 === 1 ? month : month - 1
+  const periodEnd = periodStart + 1
+
+  return `${rocYear}年 ${String(periodStart).padStart(2, '0')}-${String(periodEnd).padStart(2, '0')} 月`
 }
 
 /**
