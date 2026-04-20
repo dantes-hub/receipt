@@ -4,11 +4,11 @@ import { startTransition, useCallback, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { CheckCircle2, CircleAlert, Clock3, Camera, Loader2, Upload } from 'lucide-react'
+import { CheckCircle2, CircleAlert, Clock3, Camera, Loader2, Upload, ScanLine } from 'lucide-react'
 import { useTranslations } from '@/lib/i18n/client'
 import { cn } from '@/lib/utils'
 
-type UploadState = 'queued' | 'uploading' | 'done' | 'error'
+type UploadState = 'queued' | 'uploading' | 'extracting' | 'done' | 'error'
 
 interface UploadItem {
   file: File
@@ -27,6 +27,8 @@ function getStateIcon(state: UploadState) {
   switch (state) {
     case 'uploading':
       return <Loader2 className="w-4 h-4 animate-spin text-[#0F766E]" />
+    case 'extracting':
+      return <ScanLine className="w-4 h-4 animate-pulse text-[#0F766E]" />
     case 'done':
       return <CheckCircle2 className="w-4 h-4 text-[#166534]" />
     case 'error':
@@ -34,6 +36,34 @@ function getStateIcon(state: UploadState) {
     default:
       return <Clock3 className="w-4 h-4 text-muted-foreground" />
   }
+}
+
+async function pollStatus(receiptId: string): Promise<'review' | 'error' | 'pending' | 'extracting'> {
+  try {
+    const res = await fetch(`/api/receipts/${receiptId}/status`)
+    if (!res.ok) return 'error'
+    const data = await res.json()
+    return data.status
+  } catch {
+    return 'error'
+  }
+}
+
+async function waitForExtraction(
+  receiptId: string,
+  onStatus: (status: string) => void
+): Promise<'review' | 'error'> {
+  const MAX_POLLS = 30
+  const INTERVAL_MS = 2000
+
+  for (let i = 0; i < MAX_POLLS; i++) {
+    await new Promise((resolve) => setTimeout(resolve, INTERVAL_MS))
+    const status = await pollStatus(receiptId)
+    onStatus(status)
+    if (status === 'review' || status === 'error') return status
+  }
+
+  return 'error'
 }
 
 export function DashboardUploadCard() {
@@ -58,26 +88,18 @@ export function DashboardUploadCard() {
     e.preventDefault()
     setIsDragging(false)
     const files = getFilesFromEvent(e.dataTransfer.files)
-    if (files.length > 0) {
-      void uploadFiles(files)
-    }
+    if (files.length > 0) void uploadFiles(files)
   }, [])
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = getFilesFromEvent(e.target.files)
-    if (files.length > 0) {
-      void uploadFiles(files)
-    }
+    if (files.length > 0) void uploadFiles(files)
     e.target.value = ''
   }
 
   const updateUploadItem = (fileName: string, nextState: Partial<UploadItem>) => {
     setUploadItems((current) =>
-      current.map((item) =>
-        item.file.name === fileName
-          ? { ...item, ...nextState }
-          : item
-      )
+      current.map((item) => item.file.name === fileName ? { ...item, ...nextState } : item)
     )
   }
 
@@ -95,32 +117,34 @@ export function DashboardUploadCard() {
         const formData = new FormData()
         formData.append('file', file)
 
-        const response = await fetch('/api/receipts/upload', {
-          method: 'POST',
-          body: formData,
-        })
-
+        const response = await fetch('/api/receipts/upload', { method: 'POST', body: formData })
         const payload = await response.json()
 
-        if (!response.ok) {
-          throw new Error(payload.error || '上傳失敗')
-        }
+        if (!response.ok) throw new Error(payload.error || '上傳失敗')
+
+        const receiptId = payload.receiptId
+        if (!firstReceiptId && receiptId) firstReceiptId = receiptId
 
         updateUploadItem(file.name, {
-          state: 'done',
-          message: payload.message || t.dashboard.uploadDone,
-          receiptId: payload.receiptId,
+          state: 'extracting',
+          message: t.receiptsPage.processing,
+          receiptId,
         })
 
-        if (!firstReceiptId && payload.receiptId) {
-          firstReceiptId = payload.receiptId
+        const finalStatus = await waitForExtraction(receiptId, (status) => {
+          if (status === 'extracting') {
+            updateUploadItem(file.name, { message: t.receiptsPage.processing })
+          }
+        })
+
+        if (finalStatus === 'review') {
+          updateUploadItem(file.name, { state: 'done', message: t.dashboard.uploadDone })
+        } else {
+          updateUploadItem(file.name, { state: 'error', message: t.errors.uploadFailed })
         }
       } catch (uploadError) {
         const message = uploadError instanceof Error ? uploadError.message : '上傳失敗'
-        updateUploadItem(file.name, {
-          state: 'error',
-          message,
-        })
+        updateUploadItem(file.name, { state: 'error', message })
         setError(message)
       }
     }
@@ -133,6 +157,8 @@ export function DashboardUploadCard() {
       })
     }
   }
+
+  const isProcessing = isUploading || uploadItems.some((i) => i.state === 'uploading' || i.state === 'extracting')
 
   return (
     <Card className="border-border">
@@ -148,7 +174,7 @@ export function DashboardUploadCard() {
               : 'border-border hover:border-[#0F766E]/50 hover:bg-muted/30'
           )}
         >
-          {isUploading ? (
+          {isProcessing ? (
             <div className="space-y-4">
               <Loader2 className="w-12 h-12 mx-auto text-[#0F766E] animate-spin" />
               <p className="text-muted-foreground">
