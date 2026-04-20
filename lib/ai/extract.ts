@@ -4,7 +4,7 @@ import { z } from 'zod'
 import type { ExtractedReceiptData, ReceiptCategory, ReceiptDocumentType } from '@/types/receipt'
 import { rocToWestern } from '@/lib/validators'
 
-const DEFAULT_RECEIPT_MODEL = process.env.OPENAI_RECEIPT_MODEL ?? 'gpt-4o-2024-08-06'
+const DEFAULT_RECEIPT_MODEL = process.env.OPENAI_RECEIPT_MODEL ?? 'gpt-4o-2024-11-20'
 const CONFIDENCE_RETRY_THRESHOLD = 0.45
 
 const receiptCategorySchema = z.enum(['dining', 'transport', 'office', 'materials', 'other'])
@@ -171,6 +171,10 @@ category
   — office: stationery, software, printing, office supplies
   — materials: raw materials, inventory, manufacturing supplies
   — other: everything else
+
+LANGUAGE:
+  — All string fields (vendorName, notes) must be in Traditional Chinese (繁體中文) or the original printed text.
+  — Never write notes or descriptions in English.
 
 CONFIDENCE SCORES:
   — Score each field 0.0–1.0. Be honest — do not inflate scores.
