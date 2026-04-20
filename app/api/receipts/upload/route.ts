@@ -8,7 +8,7 @@ import { extractReceiptFromFile } from '@/lib/ai/extract'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { RECEIPTS_BUCKET } from '@/lib/supabase/storage'
-import { validateReceipt } from '@/lib/validation/receipt'
+import { validateReceipt, enrichWithMoea } from '@/lib/validation/receipt'
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
 const RATE_LIMIT_PER_HOUR = 20
@@ -98,7 +98,8 @@ async function runExtraction(receiptId: string, fileBuffer: Buffer, mimeType: st
 
     const extractionStartedAt = Date.now()
     const extraction = await extractReceiptFromFile({ fileBuffer, mimeType, fileName })
-    const validationReport = validateReceipt(extraction.extractedData)
+    const baseValidation = validateReceipt(extraction.extractedData)
+    const validationReport = await enrichWithMoea(baseValidation, extraction.extractedData)
     const processingMs = Date.now() - extractionStartedAt
     const invoiceDate = extraction.extractedData.invoiceDate
     const [yearString, monthString] = invoiceDate.split('-')

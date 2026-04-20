@@ -1,5 +1,6 @@
 import type { ExtractedReceiptData, ReceiptValidationField, ReceiptValidationReport, ValidationResult } from '@/types/receipt'
 import { validateInvoiceNumber, validateTaxCalculation, validateTaxId } from '@/lib/validators'
+import { lookupCompanyByUbn } from '@/lib/moea/lookup'
 
 type FieldValidationMap = Record<ReceiptValidationField, ValidationResult[]>
 
@@ -151,6 +152,66 @@ function validateAmountsForReceipt(receipt: ExtractedReceiptData, fields: FieldV
   }
 }
 
+function recomputeSummary(fields: Record<ReceiptValidationField, ValidationResult[]>): ReceiptValidationReport['summary'] {
+  return Object.values(fields).flat().reduce(
+    (acc, result) => {
+      acc.totalChecks += 1
+      if (result.status === 'pass') acc.passedChecks += 1
+      if (result.status === 'warn') acc.warningChecks += 1
+      if (result.status === 'fail') acc.failedChecks += 1
+      return acc
+    },
+    { passedChecks: 0, warningChecks: 0, failedChecks: 0, totalChecks: 0 }
+  )
+}
+
+export async function enrichWithMoea(
+  report: ReceiptValidationReport,
+  extractedData: ExtractedReceiptData
+): Promise<ReceiptValidationReport> {
+  if (extractedData.receiptType !== 'uniform_invoice' || !extractedData.taxId) {
+    return report
+  }
+
+  const taxIdPassed = report.fields.taxId.some((r) => r.status === 'pass')
+  if (!taxIdPassed) return report
+
+  const result = await lookupCompanyByUbn(extractedData.taxId)
+
+  if (result.error) {
+    report.fields.taxId.push({ status: 'warn', label: `政府資料庫查詢失敗：${result.error}` })
+  } else if (!result.found) {
+    report.fields.taxId.push({ status: 'fail', label: '統編在政府資料庫中查無此公司' })
+    report.fields.vendorName.push({ status: 'warn', label: '無法從政府資料庫確認廠商名稱' })
+  } else if (result.company) {
+    const { name, status, isActive } = result.company
+
+    if (!isActive) {
+      report.fields.taxId.push({ status: 'warn', label: `公司已停業：${status}` })
+    } else {
+      report.fields.taxId.push({ status: 'pass', label: `政府資料庫確認：${name}` })
+    }
+
+    const extractedName = extractedData.vendorName.trim()
+    const registeredName = name.trim()
+    if (extractedName && registeredName && !registeredName.includes(extractedName) && !extractedName.includes(registeredName)) {
+      report.fields.vendorName.push({
+        status: 'warn',
+        label: `廠商名稱與登記不符：登記為「${registeredName}」`,
+      })
+    } else if (extractedName) {
+      report.fields.vendorName.push({ status: 'pass', label: `廠商名稱與登記一致` })
+    }
+  }
+
+  const summary = recomputeSummary(report.fields)
+  let status: ReceiptValidationReport['status'] = 'ready'
+  if (summary.failedChecks > 0) status = 'rejected'
+  else if (summary.warningChecks > 0) status = 'needs_review'
+
+  return { ...report, summary, status }
+}
+
 export function validateReceipt(extractedData: ExtractedReceiptData): ReceiptValidationReport {
   const fields = createEmptyFieldValidationMap()
 
@@ -196,17 +257,7 @@ export function validateReceipt(extractedData: ExtractedReceiptData): ReceiptVal
     validateAmountsForReceipt(extractedData, fields)
   }
 
-  const allResults = Object.values(fields).flat()
-  const summary = allResults.reduce(
-    (acc, result) => {
-      acc.totalChecks += 1
-      if (result.status === 'pass') acc.passedChecks += 1
-      if (result.status === 'warn') acc.warningChecks += 1
-      if (result.status === 'fail') acc.failedChecks += 1
-      return acc
-    },
-    { passedChecks: 0, warningChecks: 0, failedChecks: 0, totalChecks: 0 }
-  )
+  const summary = recomputeSummary(fields)
 
   let status: ReceiptValidationReport['status'] = 'ready'
   if (summary.failedChecks > 0) {
