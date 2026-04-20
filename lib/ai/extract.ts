@@ -5,6 +5,7 @@ import type { ExtractedReceiptData, ReceiptCategory, ReceiptDocumentType } from 
 import { rocToWestern } from '@/lib/validators'
 
 const DEFAULT_RECEIPT_MODEL = process.env.OPENAI_RECEIPT_MODEL ?? 'gpt-4o-2024-08-06'
+const CONFIDENCE_RETRY_THRESHOLD = 0.45
 
 const receiptCategorySchema = z.enum(['dining', 'transport', 'office', 'materials', 'other'])
 const receiptDocumentTypeSchema = z.enum(['uniform_invoice', 'receipt', 'other'])
@@ -57,6 +58,7 @@ export interface ExtractReceiptResult {
   extractedData: ExtractedReceiptData
   confidenceScores: ReceiptConfidenceScores
   raw: ReceiptExtraction
+  retried: boolean
 }
 
 function buildDataUrl(fileBuffer: Buffer, mimeType: string) {
@@ -82,14 +84,6 @@ function normalizeInvoiceDate(invoiceDate: string) {
   return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
 }
 
-function normalizeCategory(category: ReceiptCategory) {
-  return category
-}
-
-function normalizeReceiptType(receiptType: ReceiptDocumentType) {
-  return receiptType
-}
-
 function normalizeLineItems(lineItems: ReceiptExtraction['lineItems']) {
   return lineItems.map((item) => ({
     description: item.description.trim(),
@@ -100,12 +94,10 @@ function normalizeLineItems(lineItems: ReceiptExtraction['lineItems']) {
 }
 
 export function normalizeExtractionResult(result: ReceiptExtraction): ExtractedReceiptData {
-  const normalizedReceiptType = normalizeReceiptType(result.receiptType)
-
-  const isUniformInvoice = normalizedReceiptType === 'uniform_invoice'
+  const isUniformInvoice = result.receiptType === 'uniform_invoice'
 
   return {
-    receiptType: normalizedReceiptType,
+    receiptType: result.receiptType,
     vendorName: result.vendorName.trim(),
     taxId: isUniformInvoice ? result.taxId.trim() : '',
     invoiceNumber: isUniformInvoice ? result.invoiceNumber.trim().toUpperCase() : '',
@@ -113,7 +105,7 @@ export function normalizeExtractionResult(result: ReceiptExtraction): ExtractedR
     subtotal: result.subtotal,
     tax: result.tax,
     total: result.total,
-    category: normalizeCategory(result.category),
+    category: result.category as ReceiptCategory,
     lineItems: normalizeLineItems(result.lineItems),
     notes: result.notes?.trim() || undefined,
   }
@@ -121,11 +113,7 @@ export function normalizeExtractionResult(result: ReceiptExtraction): ExtractedR
 
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY
-
-  if (!apiKey) {
-    throw new Error('OPENAI_API_KEY is not configured.')
-  }
-
+  if (!apiKey) throw new Error('OPENAI_API_KEY is not configured.')
   return new OpenAI({ apiKey })
 }
 
@@ -133,60 +121,150 @@ function assertSupportedMimeType(mimeType: string) {
   if (mimeType === 'application/pdf') {
     throw new Error('PDF extraction is not implemented yet.')
   }
-
   if (!mimeType.startsWith('image/')) {
     throw new Error(`Unsupported receipt file type: ${mimeType}`)
   }
+}
+
+const SYSTEM_PROMPT = `You extract structured data from Taiwan receipts and invoices. Be precise and conservative — only output what you can clearly read.
+
+DOCUMENT CLASSIFICATION:
+- uniform_invoice: Has 發票號碼 (2 uppercase letters + 8 digits e.g. AB12345678) AND seller 統編 (8-digit tax ID). Formal B2B/B2C invoice issued under Taiwan tax law.
+- receipt: Store receipt, payment slip, EasyCard top-up, convenience store printout, taxi receipt, parking ticket, bank transaction slip. Has a total but no formal invoice number.
+- other: Cannot clearly be classified as either above.
+
+FIELD RULES:
+taxId
+  — ONLY for uniform_invoice. Exactly 8 digits. Example: "28769401"
+  — Do NOT invent or guess. If not clearly visible return "".
+
+invoiceNumber
+  — ONLY for uniform_invoice. Exactly 2 uppercase letters + 8 digits. Example: "AB12345678"
+  — Do NOT use transaction serial numbers, order IDs, or barcode numbers.
+  — If not clearly visible return "".
+
+invoiceDate
+  — Return as YYYY-MM-DD.
+  — Taiwan ROC year: add 1911. Examples: 114/04/19 → 2025-04-19, 113/12/01 → 2024-12-01
+  — Western year: use as-is. Example: 2025/04/19 → 2025-04-19
+  — If date is ambiguous return "".
+
+vendorName
+  — Full name as printed. Include branch if shown: "7-ELEVEN 中山店", "全家 信義店"
+  — For handwritten receipts use the store stamp name if available.
+
+subtotal (未稅金額)
+  — Amount before 5% tax. Only populate when tax is broken out separately.
+  — For receipts without tax breakdown return 0.
+
+tax (稅額)
+  — Usually 5% of subtotal in Taiwan. Only populate when printed separately.
+  — Return 0 if not shown.
+
+total (總金額/合計/應付金額)
+  — Final amount the customer paid. Required. Look for the largest bottom-line amount.
+  — Return 0 only if completely unreadable.
+
+category
+  — dining: restaurants, cafes, convenience stores, food delivery, supermarkets
+  — transport: taxi, MRT, bus, EasyCard, parking, fuel, highway toll
+  — office: stationery, software, printing, office supplies
+  — materials: raw materials, inventory, manufacturing supplies
+  — other: everything else
+
+CONFIDENCE SCORES:
+  — Score each field 0.0–1.0. Be honest — do not inflate scores.
+  — 0.95+: every character clearly legible
+  — 0.80–0.94: mostly clear, minor uncertainty
+  — 0.50–0.79: partially readable or inferred
+  — Below 0.50: guessed or not found (field should be empty/0)`
+
+const USER_PROMPT = `Extract this Taiwan receipt or invoice into the JSON schema.
+
+Pay special attention to:
+1. Document type classification (uniform_invoice vs receipt)
+2. The total amount — find the final "合計" or "總計" line
+3. ROC date conversion if applicable
+4. Taiwan tax ID (統編) — only if this is a uniform_invoice
+
+Return honest confidence scores. If a field is absent or unreadable, return "" or 0 and score 0.0.`
+
+function buildRetryHint(lowFields: string[]): string {
+  const fieldNames: Record<string, string> = {
+    vendorName: '廠商名稱 (vendor name)',
+    taxId: '統編 (8-digit tax ID)',
+    invoiceNumber: '發票號碼 (2 letters + 8 digits)',
+    invoiceDate: '發票日期 (date)',
+    total: '總金額 (total amount)',
+    subtotal: '未稅金額 (subtotal before tax)',
+    tax: '稅額 (tax amount)',
+  }
+
+  const named = lowFields.map((f) => fieldNames[f] ?? f).join(', ')
+  return `The previous extraction had low confidence on: ${named}. Please look more carefully at these specific fields. If truly unreadable, return "" or 0 — do not guess.`
+}
+
+function getLowConfidenceFields(scores: ReceiptConfidenceScores, receiptType: string): string[] {
+  const criticalFields: (keyof ReceiptConfidenceScores)[] = ['vendorName', 'total', 'invoiceDate']
+  if (receiptType === 'uniform_invoice') {
+    criticalFields.push('taxId', 'invoiceNumber')
+  }
+  return criticalFields.filter((f) => scores[f] < CONFIDENCE_RETRY_THRESHOLD)
+}
+
+async function callExtraction(
+  client: OpenAI,
+  dataUrl: string,
+  retryHint?: string
+): Promise<ReceiptExtraction> {
+  const userContent: OpenAI.Chat.ChatCompletionContentPart[] = [
+    { type: 'text', text: retryHint ? `${USER_PROMPT}\n\n${retryHint}` : USER_PROMPT },
+    { type: 'image_url', image_url: { url: dataUrl, detail: 'high' } },
+  ]
+
+  const completion = await client.beta.chat.completions.parse({
+    model: DEFAULT_RECEIPT_MODEL,
+    temperature: retryHint ? 0.1 : 0,
+    messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: userContent },
+    ],
+    response_format: zodResponseFormat(receiptExtractionSchema, 'taiwan_receipt_extraction'),
+  })
+
+  const parsed = completion.choices[0]?.message.parsed
+  if (!parsed) throw new Error('OpenAI did not return a parsed receipt payload.')
+  return parsed
 }
 
 export async function extractReceiptFromFile(input: ExtractReceiptInput): Promise<ExtractReceiptResult> {
   assertSupportedMimeType(input.mimeType)
 
   const client = getOpenAIClient()
-  const completion = await client.beta.chat.completions.parse({
-    model: DEFAULT_RECEIPT_MODEL,
-    temperature: 0,
-    messages: [
-      {
-        role: 'system',
-        content: [
-          {
-            type: 'text',
-            text:
-              'You extract structured data from Taiwan receipts and invoices. First classify the document as uniform_invoice, receipt, or other. A payment slip, transaction detail, EasyCard receipt, or store transaction record is receipt, not uniform_invoice. Only populate invoiceNumber and taxId when they are actually present as invoice/business-tax fields. Do not put transaction serial numbers into invoiceNumber. Return only the schema fields. Normalize ROC dates such as 114/04/19 to 2025-04-19. Keep unknown strings empty and unknown numbers as 0. Use Traditional Chinese understanding for vendor names and handwritten fields.',
-          },
-        ],
-      },
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'text',
-            text:
-              'Extract the document into the provided JSON schema. Required targets: receipt type, vendor name, Taiwan tax ID if present, invoice number if present, invoice date, subtotal, tax, total, category, line items, and per-field confidence scores.',
-          },
-          {
-            type: 'image_url',
-            image_url: {
-              url: buildDataUrl(input.fileBuffer, input.mimeType),
-            },
-          },
-        ],
-      },
-    ],
-    response_format: zodResponseFormat(receiptExtractionSchema, 'taiwan_receipt_extraction'),
-  })
+  const dataUrl = buildDataUrl(input.fileBuffer, input.mimeType)
 
-  const parsed = completion.choices[0]?.message.parsed
+  const first = await callExtraction(client, dataUrl)
+  const lowFields = getLowConfidenceFields(first.confidenceScores, first.receiptType)
 
-  if (!parsed) {
-    throw new Error('OpenAI did not return a parsed receipt payload.')
+  let final = first
+  let retried = false
+
+  if (lowFields.length > 0) {
+    retried = true
+    const retryHint = buildRetryHint(lowFields)
+    const second = await callExtraction(client, dataUrl, retryHint)
+
+    // Keep the extraction with higher total confidence on the low fields
+    const firstScore = lowFields.reduce((s, f) => s + first.confidenceScores[f as keyof ReceiptConfidenceScores], 0)
+    const secondScore = lowFields.reduce((s, f) => s + second.confidenceScores[f as keyof ReceiptConfidenceScores], 0)
+    final = secondScore >= firstScore ? second : first
   }
 
   return {
     model: DEFAULT_RECEIPT_MODEL,
-    extractedData: normalizeExtractionResult(parsed),
-    confidenceScores: parsed.confidenceScores,
-    raw: parsed,
+    extractedData: normalizeExtractionResult(final),
+    confidenceScores: final.confidenceScores,
+    raw: final,
+    retried,
   }
 }
