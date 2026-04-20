@@ -102,14 +102,13 @@ function normalizeLineItems(lineItems: ReceiptExtraction['lineItems']) {
 export function normalizeExtractionResult(result: ReceiptExtraction): ExtractedReceiptData {
   const normalizedReceiptType = normalizeReceiptType(result.receiptType)
 
+  const isUniformInvoice = normalizedReceiptType === 'uniform_invoice'
+
   return {
     receiptType: normalizedReceiptType,
     vendorName: result.vendorName.trim(),
-    taxId: result.taxId.trim(),
-    invoiceNumber:
-      normalizedReceiptType === 'uniform_invoice'
-        ? result.invoiceNumber.trim().toUpperCase()
-        : '',
+    taxId: isUniformInvoice ? result.taxId.trim() : '',
+    invoiceNumber: isUniformInvoice ? result.invoiceNumber.trim().toUpperCase() : '',
     invoiceDate: normalizeInvoiceDate(result.invoiceDate),
     subtotal: result.subtotal,
     tax: result.tax,

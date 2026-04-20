@@ -98,6 +98,7 @@ function toReceiptListItem(row: {
   status: ReceiptStatus
   createdAt: Date
   imagePath: string
+  receiptType: ReceiptDocumentType | null
   extractedData: unknown
 }): ReceiptListItem {
   const extractedData = parseExtractedData(row.extractedData)
@@ -112,7 +113,7 @@ function toReceiptListItem(row: {
     invoiceDate: extractedData.invoiceDate,
     total: extractedData.total,
     category: extractedData.category,
-    receiptType: extractedData.receiptType,
+    receiptType: row.receiptType ?? extractedData.receiptType,
     imagePath: row.imagePath,
   }
 }
@@ -124,6 +125,7 @@ export async function getRecentReceipts(userId: string, limit = 5): Promise<Rece
       status: receipts.status,
       createdAt: receipts.createdAt,
       imagePath: receipts.imagePath,
+      receiptType: receipts.receiptType,
       extractedData: receipts.extractedData,
     })
     .from(receipts)
@@ -150,6 +152,7 @@ export async function getReceiptList(userId: string, month?: string): Promise<Re
       status: receipts.status,
       createdAt: receipts.createdAt,
       imagePath: receipts.imagePath,
+      receiptType: receipts.receiptType,
       extractedData: receipts.extractedData,
     })
     .from(receipts)
@@ -233,6 +236,7 @@ export async function getReceiptsForExport(options: {
       status: receipts.status,
       createdAt: receipts.createdAt,
       imagePath: receipts.imagePath,
+      receiptType: receipts.receiptType,
       extractedData: receipts.extractedData,
     })
     .from(receipts)
@@ -252,7 +256,7 @@ export async function getReceiptsForExport(options: {
       invoiceDate: extractedData.invoiceDate,
       total: extractedData.total,
       category: extractedData.category,
-      receiptType: extractedData.receiptType,
+      receiptType: row.receiptType ?? extractedData.receiptType,
       imagePath: row.imagePath,
       subtotal: extractedData.subtotal,
       tax: extractedData.tax,
@@ -268,6 +272,7 @@ export async function getReceiptDetail(userId: string, receiptId: string): Promi
       status: receipts.status,
       createdAt: receipts.createdAt,
       imagePath: receipts.imagePath,
+      receiptType: receipts.receiptType,
       extractedData: receipts.extractedData,
       confidenceScores: receipts.confidenceScores,
       validationResults: receipts.validationResults,
@@ -292,7 +297,7 @@ export async function getReceiptDetail(userId: string, receiptId: string): Promi
     invoiceDate: extractedData.invoiceDate,
     total: extractedData.total,
     category: extractedData.category,
-    receiptType: extractedData.receiptType,
+    receiptType: row.receiptType ?? extractedData.receiptType,
     imagePath: row.imagePath,
     subtotal: extractedData.subtotal,
     tax: extractedData.tax,

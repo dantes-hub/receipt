@@ -19,7 +19,9 @@ function escapeCsvCell(value: string | number) {
 }
 
 function buildVoucherNumber(receipt: ReceiptExportItem) {
-  return receipt.invoiceNumber || receipt.id
+  if (receipt.invoiceNumber) return receipt.invoiceNumber
+  const date = (receipt.invoiceDate || receipt.uploadedAt.slice(0, 10)).replace(/-/g, '')
+  return `RCP-${date}-${receipt.id.slice(0, 6).toUpperCase()}`
 }
 
 function buildSummary(receipt: ReceiptExportItem) {
