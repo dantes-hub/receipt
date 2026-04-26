@@ -88,7 +88,7 @@ export function ReceiptImageViewer({ src, alt = '發票圖片', className }: Rec
       <div
         ref={containerRef}
         className={cn(
-          'relative flex-1 bg-muted rounded-xl overflow-hidden min-h-[300px] md:min-h-[400px]',
+          'relative flex-1 bg-muted rounded-xl overflow-hidden min-h-[200px] md:min-h-[400px]',
           scale > 1 ? 'cursor-grab' : 'cursor-default',
           isDragging && 'cursor-grabbing'
         )}

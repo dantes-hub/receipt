@@ -27,8 +27,8 @@ export function Footer() {
     legal: {
       title: t.footer.legal,
       links: [
-        { label: t.footer.terms, href: '#' },
-        { label: t.footer.privacy, href: '#' },
+        { label: t.footer.terms, href: '/terms' },
+        { label: t.footer.privacy, href: '/privacy' },
       ],
     },
     contact: {

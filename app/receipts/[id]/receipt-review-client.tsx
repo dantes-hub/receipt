@@ -195,10 +195,10 @@ export function ReceiptReviewClient({
               <ReceiptImageViewer
                 src={receipt.imageUrl}
                 alt={`發票 ${receipt.invoiceNumber.value || receipt.id}`}
-                className="h-full"
+                className="h-full max-h-[50vh] lg:max-h-none"
               />
             ) : (
-              <Card className="h-full min-h-[300px] md:min-h-[400px] flex items-center justify-center border-dashed">
+              <Card className="h-full min-h-[200px] md:min-h-[400px] flex items-center justify-center border-dashed">
                 <CardContent className="py-10 text-center">
                   <FileText className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
                   <p className="font-medium mb-2">{receipt.isPdf ? t.review.previewPdf : t.review.previewUnavailable}</p>
@@ -221,6 +221,15 @@ export function ReceiptReviewClient({
           </div>
 
           <div className="lg:col-span-5 space-y-6">
+            {/* AI accuracy disclaimer */}
+            <div className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30 px-3 py-2.5 text-xs text-amber-800 dark:text-amber-300">
+              <span className="shrink-0">⚠️</span>
+              <span>
+                AI 辨識結果可能有誤，請逐一核對每個欄位再確認匯出。
+                <span className="hidden sm:inline"> · AI extraction may contain errors. Please verify all fields before confirming.</span>
+              </span>
+            </div>
+
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <span>{t.review.validationProgress}</span>
@@ -404,7 +413,40 @@ export function ReceiptReviewClient({
 
       <div className="sticky bottom-0 border-t border-border bg-background/95 backdrop-blur">
         <div className="container mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
+          {/* Mobile: confirm full width on top, delete+nav below */}
+          <div className="flex flex-col gap-2 sm:hidden">
+            <Button
+              onClick={handleConfirmAndNext}
+              disabled={isSaving}
+              className="w-full bg-[#0F766E] hover:bg-[#0F766E]/90 text-white"
+            >
+              {isSaving ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{t.review.saving}</>
+              ) : (
+                <><Check className="w-4 h-4 mr-2" />{t.review.saveAndNext}</>
+              )}
+            </Button>
+            <div className="flex items-center justify-between">
+              <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10">
+                <Trash2 className="w-4 h-4" />
+              </Button>
+              <div className="flex items-center gap-2">
+                {prevReceiptId && (
+                  <Link href={`/receipts/${prevReceiptId}`}>
+                    <Button variant="outline" size="sm"><ArrowLeft className="w-4 h-4" /></Button>
+                  </Link>
+                )}
+                {nextReceiptId && (
+                  <Link href={`/receipts/${nextReceiptId}`}>
+                    <Button variant="outline" size="sm"><ArrowRight className="w-4 h-4" /></Button>
+                  </Link>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Desktop: original single-row layout */}
+          <div className="hidden sm:flex items-center justify-between">
             <Button variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10">
               <Trash2 className="w-4 h-4 mr-2" />
               {t.actions.delete}
@@ -433,15 +475,9 @@ export function ReceiptReviewClient({
                 className="bg-[#0F766E] hover:bg-[#0F766E]/90 text-white"
               >
                 {isSaving ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    {t.review.saving}
-                  </>
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{t.review.saving}</>
                 ) : (
-                  <>
-                    <Check className="w-4 h-4 mr-2" />
-                    {t.review.saveAndNext}
-                  </>
+                  <><Check className="w-4 h-4 mr-2" />{t.review.saveAndNext}</>
                 )}
               </Button>
             </div>
