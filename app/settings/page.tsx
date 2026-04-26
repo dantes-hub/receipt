@@ -372,7 +372,16 @@ export default function SettingsPage() {
                       <p className="font-medium text-destructive">{t.settings.danger.deleteTitle}</p>
                       <p className="text-sm text-muted-foreground">{t.settings.danger.deleteDesc}</p>
                     </div>
-                    <Button variant="destructive" disabled>{t.settings.danger.deleteButton}</Button>
+                    <Button
+                      variant="destructive"
+                      onClick={async () => {
+                        if (!confirm('確定要永久刪除帳號嗎？此操作無法復原。\n\nAre you sure? This cannot be undone.')) return
+                        await fetch('/api/account', { method: 'DELETE' })
+                        window.location.href = '/'
+                      }}
+                    >
+                      {t.settings.danger.deleteButton}
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
