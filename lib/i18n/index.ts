@@ -32,10 +32,13 @@ export function getClientLocale(): Locale {
   return isLocale(localeCookie) ? localeCookie : 'zh-TW'
 }
 
+export const LOCALE_CHANGE_EVENT = 'receiptbridge-locale-change'
+
 export function setClientLocale(locale: Locale) {
   if (typeof document === 'undefined') {
     return
   }
 
   document.cookie = `${LOCALE_COOKIE_NAME}=${locale}; path=/; max-age=31536000; samesite=lax`
+  window.dispatchEvent(new CustomEvent(LOCALE_CHANGE_EVENT, { detail: locale }))
 }

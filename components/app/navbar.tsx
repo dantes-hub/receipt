@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Logo } from './logo'
 import { LocaleToggle } from './locale-toggle'
@@ -14,13 +15,15 @@ interface NavbarProps {
 
 export function Navbar({ isApp = false }: NavbarProps) {
   const t = useTranslations()
+  const pathname = usePathname()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
+  const hashPrefix = pathname === '/' ? '' : '/'
   const marketingLinks = [
-    { href: '#features', label: t.nav.features },
-    { href: '#how-it-works', label: t.nav.howItWorks },
-    { href: '#pricing', label: t.nav.pricing },
-    { href: '#contact', label: t.nav.contact },
+    { href: `${hashPrefix}#features`, label: t.nav.features },
+    { href: `${hashPrefix}#how-it-works`, label: t.nav.howItWorks },
+    { href: `${hashPrefix}#pricing`, label: t.nav.pricing },
+    { href: `${hashPrefix}#contact`, label: t.nav.contact },
   ]
 
   return (

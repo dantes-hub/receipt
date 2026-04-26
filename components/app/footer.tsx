@@ -1,19 +1,22 @@
 'use client'
 
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { Logo } from './logo'
 import { LocaleToggle } from './locale-toggle'
 import { useTranslations } from '@/lib/i18n/client'
 
 export function Footer() {
   const t = useTranslations()
+  const pathname = usePathname()
+  const hashPrefix = pathname === '/' ? '' : '/'
   const footerLinks = {
     product: {
       title: t.footer.product,
       links: [
-        { label: t.nav.features, href: '#features' },
-        { label: t.nav.howItWorks, href: '#how-it-works' },
-        { label: t.nav.pricing, href: '#pricing' },
+        { label: t.nav.features, href: `${hashPrefix}#features` },
+        { label: t.nav.howItWorks, href: `${hashPrefix}#how-it-works` },
+        { label: t.nav.pricing, href: `${hashPrefix}#pricing` },
       ],
     },
     resources: {
