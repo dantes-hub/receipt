@@ -3,7 +3,7 @@ import type { Receipt, ReceiptStats, UserSettings } from '@/types/receipt'
 export const mockReceipts: Receipt[] = [
   {
     id: 'AB12345678',
-    imageUrl: '/placeholder-receipt.jpg',
+    imageUrl: '/placeholder.jpg',
     status: 'confirmed',
     uploadedAt: '2026-04-15T10:30:00Z',
     vendorName: { value: '家樂福 中科店', confidence: 0.96, validations: [] },
@@ -53,7 +53,7 @@ export const mockReceipts: Receipt[] = [
   },
   {
     id: 'CD23456789',
-    imageUrl: '/placeholder-receipt.jpg',
+    imageUrl: '/placeholder.jpg',
     status: 'review',
     uploadedAt: '2026-04-16T09:15:00Z',
     vendorName: { value: '全聯福利中心', confidence: 0.92, validations: [] },
@@ -97,7 +97,7 @@ export const mockReceipts: Receipt[] = [
   },
   {
     id: 'EF34567890',
-    imageUrl: '/placeholder-receipt.jpg',
+    imageUrl: '/placeholder.jpg',
     status: 'error',
     uploadedAt: '2026-04-17T14:20:00Z',
     vendorName: { value: '未能辨識', confidence: 0.45, validations: [] },
@@ -128,7 +128,7 @@ export const mockReceipts: Receipt[] = [
   },
   {
     id: 'GH45678901',
-    imageUrl: '/placeholder-receipt.jpg',
+    imageUrl: '/placeholder.jpg',
     status: 'extracting',
     uploadedAt: '2026-04-18T11:00:00Z',
     vendorName: { value: '處理中...', confidence: 0, validations: [] },
@@ -142,7 +142,7 @@ export const mockReceipts: Receipt[] = [
   },
   {
     id: 'IJ56789012',
-    imageUrl: '/placeholder-receipt.jpg',
+    imageUrl: '/placeholder.jpg',
     status: 'confirmed',
     uploadedAt: '2026-04-14T16:45:00Z',
     vendorName: { value: '台灣中油', confidence: 0.99, validations: [] },

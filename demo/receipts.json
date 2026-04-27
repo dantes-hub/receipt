@@ -1,0 +1,44 @@
+[
+  {
+    "status": "confirmed",
+    "receiptType": "uniform_invoice",
+    "vendorName": "家樂福 中科店",
+    "taxId": "24536806",
+    "invoiceNumber": "AB12345678",
+    "invoiceDate": "2025-04-19",
+    "subtotal": 1200,
+    "tax": 60,
+    "total": 1260,
+    "category": "dining",
+    "notes": "Demo fixture",
+    "processingMs": 1840
+  },
+  {
+    "status": "review",
+    "receiptType": "receipt",
+    "vendorName": "台灣中油",
+    "taxId": "",
+    "invoiceNumber": "",
+    "invoiceDate": "2025-04-20",
+    "subtotal": 0,
+    "tax": 0,
+    "total": 1499,
+    "category": "transport",
+    "notes": "Needs human review",
+    "processingMs": 920
+  },
+  {
+    "status": "error",
+    "receiptType": "other",
+    "vendorName": "",
+    "taxId": "",
+    "invoiceNumber": "",
+    "invoiceDate": "",
+    "subtotal": 0,
+    "tax": 0,
+    "total": 0,
+    "category": "other",
+    "notes": "Extraction failed for demo",
+    "processingMs": 120
+  }
+]

@@ -1,16 +1,22 @@
 import { randomUUID } from 'node:crypto'
 import { NextResponse } from 'next/server'
-import { eq, gte, count } from 'drizzle-orm'
+import { and, eq, gte, count } from 'drizzle-orm'
 import { waitUntil } from '@vercel/functions'
 import { db } from '@/lib/db'
-import { receipts, validationLogs } from '@/lib/db/schema'
-import { extractReceiptFromFile } from '@/lib/ai/extract'
+import { receipts } from '@/lib/db/schema'
+import { captureException } from '@/lib/observability/error-tracking'
+import { logError, logInfo, logWarn } from '@/lib/observability/logger'
+import {
+  detectReceiptFileType,
+  getReceiptFileExtension,
+  MAX_RECEIPT_FILE_SIZE_BYTES,
+  validateReceiptFileSignature,
+} from '@/lib/receipts/files'
+import { enqueueReceiptProcessingJob, runReceiptProcessingJob } from '@/lib/receipts/processing'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { RECEIPTS_BUCKET } from '@/lib/supabase/storage'
-import { validateReceipt, enrichWithMoea } from '@/lib/validation/receipt'
 
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
 const RATE_LIMIT_PER_HOUR = 20
 
 async function isRateLimited(userId: string): Promise<boolean> {
@@ -18,41 +24,27 @@ async function isRateLimited(userId: string): Promise<boolean> {
   const [result] = await db
     .select({ total: count() })
     .from(receipts)
-    .where(eq(receipts.userId, userId) && gte(receipts.createdAt, oneHourAgo))
+    .where(and(eq(receipts.userId, userId), gte(receipts.createdAt, oneHourAgo)))
   return (result?.total ?? 0) >= RATE_LIMIT_PER_HOUR
-}
-
-const allowedMimeTypes = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/heic',
-  'image/heif',
-  'application/pdf',
-])
-
-const mimeTypeToExtension: Record<string, string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/heic': 'heic',
-  'image/heif': 'heif',
-  'application/pdf': 'pdf',
 }
 
 function getUploadErrorResponse(message: string, status: number) {
   return NextResponse.json({ error: message }, { status })
 }
 
-function getFileExtension(file: File) {
+function getFileExtension(file: File, mimeType: 'image/jpeg' | 'image/png' | 'image/heic' | 'image/heif' | 'application/pdf') {
+  const inferred = getReceiptFileExtension(mimeType)
+  if (inferred) return inferred
   const fromName = file.name.split('.').pop()?.toLowerCase()
   if (fromName) return fromName
-  return mimeTypeToExtension[file.type] ?? 'bin'
+  return 'bin'
 }
 
-function buildStoragePath(userId: string, file: File) {
+function buildStoragePath(userId: string, file: File, mimeType: 'image/jpeg' | 'image/png' | 'image/heic' | 'image/heif' | 'application/pdf') {
   const now = new Date()
   const year = now.getUTCFullYear()
   const month = String(now.getUTCMonth() + 1).padStart(2, '0')
-  const extension = getFileExtension(file)
+  const extension = getFileExtension(file, mimeType)
   return `${userId}/${year}/${month}/${randomUUID()}.${extension}`
 }
 
@@ -61,90 +53,6 @@ function getFirstFile(formData: FormData) {
     if (value instanceof File) return value
   }
   return null
-}
-
-function getValidationInputValue(
-  extractedData: {
-    vendorName: string
-    taxId: string
-    invoiceNumber: string
-    invoiceDate: string
-    subtotal: number
-    tax: number
-    total: number
-    category: string
-  },
-  fieldName: string
-) {
-  switch (fieldName) {
-    case 'vendorName': return extractedData.vendorName
-    case 'taxId': return extractedData.taxId
-    case 'invoiceNumber': return extractedData.invoiceNumber
-    case 'invoiceDate': return extractedData.invoiceDate
-    case 'subtotal': return extractedData.subtotal
-    case 'tax': return extractedData.tax
-    case 'total': return extractedData.total
-    case 'category': return extractedData.category
-    default: return ''
-  }
-}
-
-async function runExtraction(receiptId: string, fileBuffer: Buffer, mimeType: string, fileName: string) {
-  try {
-    await db
-      .update(receipts)
-      .set({ status: 'extracting', updatedAt: new Date() })
-      .where(eq(receipts.id, receiptId))
-
-    const extractionStartedAt = Date.now()
-    const extraction = await extractReceiptFromFile({ fileBuffer, mimeType, fileName })
-    const baseValidation = validateReceipt(extraction.extractedData)
-    const validationReport = await enrichWithMoea(baseValidation, extraction.extractedData)
-    const processingMs = Date.now() - extractionStartedAt
-    const invoiceDate = extraction.extractedData.invoiceDate
-    const [yearString, monthString] = invoiceDate.split('-')
-    const periodYear = yearString ? Number(yearString) : null
-    const periodMonth = monthString ? Number(monthString) : null
-
-    await db
-      .update(receipts)
-      .set({
-        status: 'review',
-        receiptType: extraction.extractedData.receiptType,
-        extractedData: extraction.extractedData,
-        confidenceScores: extraction.confidenceScores,
-        validationResults: validationReport,
-        aiModel: extraction.model,
-        processingMs,
-        periodYear: Number.isFinite(periodYear) ? periodYear : null,
-        periodMonth: Number.isFinite(periodMonth) ? periodMonth : null,
-        updatedAt: new Date(),
-      })
-      .where(eq(receipts.id, receiptId))
-
-    const validationLogValues = Object.entries(validationReport.fields).flatMap(([fieldName, results]) =>
-      results.map((result) => ({
-        receiptId,
-        validatorName: fieldName,
-        passed: result.status === 'pass',
-        inputValue: JSON.stringify(getValidationInputValue(extraction.extractedData, fieldName)),
-        errorMessage: result.status === 'pass' ? null : result.label,
-      }))
-    )
-
-    if (validationLogValues.length > 0) {
-      await db.insert(validationLogs).values(validationLogValues)
-    }
-  } catch (error) {
-    await db
-      .update(receipts)
-      .set({
-        status: 'error',
-        notes: error instanceof Error ? error.message : 'Receipt processing failed.',
-        updatedAt: new Date(),
-      })
-      .where(eq(receipts.id, receiptId))
-  }
 }
 
 export async function POST(request: Request) {
@@ -159,6 +67,7 @@ export async function POST(request: Request) {
   }
 
   if (await isRateLimited(user.id)) {
+    logWarn('receipt.upload.rate_limited', { userId: user.id })
     return getUploadErrorResponse('上傳次數已達每小時上限（20 張），請稍後再試。', 429)
   }
 
@@ -167,17 +76,36 @@ export async function POST(request: Request) {
 
   if (!file) return getUploadErrorResponse('請提供要上傳的檔案。', 400)
   if (file.size === 0) return getUploadErrorResponse('檔案內容不可為空。', 400)
-  if (file.size > MAX_FILE_SIZE_BYTES) return getUploadErrorResponse('檔案不可超過 10MB。', 400)
-  if (!allowedMimeTypes.has(file.type)) return getUploadErrorResponse('僅支援 JPG、PNG、HEIC、HEIF、PDF。', 400)
+  if (file.size > MAX_RECEIPT_FILE_SIZE_BYTES) return getUploadErrorResponse('檔案不可超過 10MB。', 400)
 
-  const storagePath = buildStoragePath(user.id, file)
   const fileBuffer = Buffer.from(await file.arrayBuffer())
+  const detectedType = detectReceiptFileType(fileBuffer)
+  const signatureValidation = validateReceiptFileSignature(detectedType, file.type)
+
+  if (!signatureValidation.ok) {
+    logWarn('receipt.upload.invalid_signature', {
+      userId: user.id,
+      fileName: file.name,
+      declaredMimeType: file.type,
+      detectedType,
+    })
+    return getUploadErrorResponse(signatureValidation.message, 400)
+  }
+
+  const storagePath = buildStoragePath(user.id, file, signatureValidation.mimeType)
 
   const { error: uploadError } = await supabaseAdmin.storage
     .from(RECEIPTS_BUCKET)
-    .upload(storagePath, fileBuffer, { contentType: file.type, upsert: false })
+    .upload(storagePath, fileBuffer, { contentType: signatureValidation.mimeType, upsert: false })
 
   if (uploadError) {
+    logError('receipt.upload.storage_failed', {
+      userId: user.id,
+      fileName: file.name,
+      storagePath,
+      error: uploadError.message,
+    })
+    captureException(uploadError, { userId: user.id, storagePath, fileName: file.name })
     return getUploadErrorResponse(`檔案上傳失敗：${uploadError.message}`, 500)
   }
 
@@ -186,7 +114,23 @@ export async function POST(request: Request) {
     .values({ userId: user.id, imagePath: storagePath, status: 'pending' })
     .returning({ id: receipts.id, status: receipts.status, createdAt: receipts.createdAt })
 
-  waitUntil(runExtraction(insertedReceipt.id, fileBuffer, file.type, file.name))
+  const job = await enqueueReceiptProcessingJob({
+    receiptId: insertedReceipt.id,
+    userId: user.id,
+    storagePath,
+    originalFilename: file.name,
+    mimeType: signatureValidation.mimeType,
+  })
+
+  waitUntil(runReceiptProcessingJob(job.id))
+  logInfo('receipt.upload.accepted', {
+    receiptId: insertedReceipt.id,
+    jobId: job.id,
+    userId: user.id,
+    fileName: file.name,
+    mimeType: signatureValidation.mimeType,
+    sizeBytes: file.size,
+  })
 
   return NextResponse.json(
     {
@@ -194,6 +138,7 @@ export async function POST(request: Request) {
       status: 'pending',
       createdAt: insertedReceipt.createdAt,
       imagePath: storagePath,
+      jobId: job.id,
       message: '檔案已上傳，辨識中...',
     },
     { status: 201 }

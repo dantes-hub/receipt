@@ -1,65 +1,32 @@
-export const receiptStatuses = ['pending', 'extracting', 'review', 'confirmed', 'error'] as const
-export type ReceiptStatus = (typeof receiptStatuses)[number]
+import type {
+  ReceiptCategory,
+  ReceiptStatus,
+  ValidationResult,
+} from '@/lib/receipts/model'
+
+export {
+  receiptCategoryValues as receiptCategories,
+  receiptDocumentTypeValues as receiptDocumentTypes,
+  receiptStatusValues as receiptStatuses,
+  receiptValidationFieldNames,
+  type ExtractedReceiptData,
+  type ExtractedReceiptLineItem,
+  type ReceiptCategory,
+  type ReceiptConfidenceScores,
+  type ReceiptDocumentType,
+  type ReceiptStatus,
+  type ReceiptValidationField,
+  type ReceiptValidationReport,
+  type ValidationResult,
+  type ValidationStatus,
+} from '@/lib/receipts/model'
+
 export type ConfidenceLevel = 'high' | 'medium' | 'low'
-export type ValidationStatus = 'pass' | 'warn' | 'fail'
-export const receiptDocumentTypes = ['uniform_invoice', 'receipt', 'other'] as const
-export type ReceiptDocumentType = (typeof receiptDocumentTypes)[number]
-
-export const receiptCategories = ['dining', 'transport', 'office', 'materials', 'other'] as const
-export type ReceiptCategory = (typeof receiptCategories)[number]
-
-export interface ValidationResult {
-  status: ValidationStatus
-  label: string
-  details?: string
-}
-
-export type ReceiptValidationField =
-  | 'vendorName'
-  | 'taxId'
-  | 'invoiceNumber'
-  | 'invoiceDate'
-  | 'subtotal'
-  | 'tax'
-  | 'total'
-  | 'category'
-
-export interface ReceiptValidationReport {
-  fields: Record<ReceiptValidationField, ValidationResult[]>
-  summary: {
-    passedChecks: number
-    warningChecks: number
-    failedChecks: number
-    totalChecks: number
-  }
-  status: 'ready' | 'needs_review' | 'rejected'
-}
 
 export interface ReceiptField {
   value: string
   confidence: number
   validations: ValidationResult[]
-}
-
-export interface ExtractedReceiptLineItem {
-  description: string
-  quantity?: number
-  unitPrice?: number
-  amount?: number
-}
-
-export interface ExtractedReceiptData {
-  receiptType: ReceiptDocumentType
-  vendorName: string
-  taxId: string
-  invoiceNumber: string
-  invoiceDate: string
-  subtotal: number
-  tax: number
-  total: number
-  category: ReceiptCategory
-  lineItems: ExtractedReceiptLineItem[]
-  notes?: string
 }
 
 export interface Receipt {

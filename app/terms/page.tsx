@@ -37,7 +37,7 @@ export default function TermsPage() {
         <div className="space-y-8 mb-12">
           <div className="inline-flex items-center px-3 py-1 rounded-full bg-muted text-sm font-medium">English</div>
 
-          <p className="text-muted-foreground leading-relaxed">By using ReceiptBridge ("the Service"), you agree to these terms.</p>
+          <p className="text-muted-foreground leading-relaxed">By using ReceiptBridge (&quot;the Service&quot;), you agree to these terms.</p>
 
           <Section title="1. What the Service Does">
             <p>ReceiptBridge uses AI to extract data from receipt images and export it as spreadsheet files for your accounting use.</p>

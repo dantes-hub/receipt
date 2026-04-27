@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { exportBatches } from '@/lib/db/schema'
+import { captureException } from '@/lib/observability/error-tracking'
+import { logError, logInfo } from '@/lib/observability/logger'
 import { buildAccountantCsv } from '@/lib/export/accountant-csv'
 import { getReceiptsForExport } from '@/lib/receipts/queries'
 import { createClient } from '@/lib/supabase/server'
@@ -52,24 +54,50 @@ export async function GET(request: Request) {
     confirmedOnly,
   })
 
-  const csv = buildAccountantCsv(receipts)
+  try {
+    const csv = buildAccountantCsv(receipts)
 
-  await db.insert(exportBatches).values({
-    userId: user.id,
-    periodYear: monthParts.periodYear,
-    periodMonth: monthParts.periodMonth,
-    filePath: null,
-    receiptCount: receipts.length,
-  })
+    await db.insert(exportBatches).values({
+      userId: user.id,
+      periodYear: monthParts.periodYear,
+      periodMonth: monthParts.periodMonth,
+      filePath: null,
+      receiptCount: receipts.length,
+    })
 
-  const fileName = `receiptbridge-accountant-${dateFrom}-to-${dateTo}.csv`
+    logInfo('receipt.export.completed', {
+      userId: user.id,
+      dateFrom,
+      dateTo,
+      confirmedOnly,
+      receiptCount: receipts.length,
+    })
 
-  return new NextResponse(csv, {
-    status: 200,
-    headers: {
-      'Content-Type': 'text/csv; charset=utf-8',
-      'Content-Disposition': `attachment; filename="${fileName}"`,
-      'Cache-Control': 'no-store',
-    },
-  })
+    const fileName = `receiptbridge-accountant-${dateFrom}-to-${dateTo}.csv`
+
+    return new NextResponse(csv, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${fileName}"`,
+        'Cache-Control': 'no-store',
+      },
+    })
+  } catch (error) {
+    logError('receipt.export.failed', {
+      userId: user.id,
+      dateFrom,
+      dateTo,
+      confirmedOnly,
+      error: error instanceof Error ? error.message : 'unknown-error',
+    })
+    captureException(error, {
+      userId: user.id,
+      dateFrom,
+      dateTo,
+      confirmedOnly,
+      service: 'accountant-csv-export',
+    })
+    return getExportError('匯出失敗，請稍後再試。', 500)
+  }
 }

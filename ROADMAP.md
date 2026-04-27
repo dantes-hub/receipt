@@ -15,15 +15,17 @@ Already done:
 - Taiwan validator utilities started
 - zh-TW and EN translations exist
 - mobile-first UI baseline exists
+- upload API created with async extraction kickoff
+- OpenAI extraction contract and ROC date normalization implemented
+- receipt queries wired for dashboard, list, detail, and export
+- accountant CSV export route implemented
 
 Not done yet:
-- Git repo / GitHub
 - Vercel deploy
 - end-to-end login verification
-- real upload API
-- AI extraction pipeline
-- real DB wiring for dashboard, list, detail, and export
-- accountant export format
+- production-grade background job infrastructure
+- PDF extraction support
+- accountant export format confirmation
 - analytics, error tracking, QA, and outreach assets
 
 ## Tickets

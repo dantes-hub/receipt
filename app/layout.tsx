@@ -1,18 +1,6 @@
 import type { Metadata, Viewport } from 'next'
-import { Noto_Sans_TC, JetBrains_Mono } from 'next/font/google'
 import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
-
-const notoSansTC = Noto_Sans_TC({
-  subsets: ['latin'],
-  weight: ['400', '500', '700'],
-  variable: '--font-noto-sans-tc',
-})
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ['latin'],
-  variable: '--font-jetbrains-mono',
-})
 
 export const metadata: Metadata = {
   title: '發票橋 ReceiptBridge - 把發票交給會計師，前所未有的輕鬆',
@@ -33,7 +21,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-TW" className="bg-background">
-      <body className={`${notoSansTC.variable} ${jetbrainsMono.variable} font-sans antialiased`}>
+      <body className="font-sans antialiased">
         {children}
         <Toaster position="top-right" />
       </body>

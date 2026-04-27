@@ -62,7 +62,7 @@ export default function PrivacyPage() {
           <Section title="Third-party processors">
             <ul className="space-y-1.5">
               <Li><strong className="text-foreground">Supabase</strong> — database and file storage (data hosted in Mumbai region)</Li>
-              <Li><strong className="text-foreground">OpenAI</strong> — AI extraction (receipt images sent to OpenAI's API; per OpenAI's API terms, data is not used to train models and is retained for up to 30 days for abuse monitoring)</Li>
+              <Li><strong className="text-foreground">OpenAI</strong> — AI extraction (receipt images sent to OpenAI&apos;s API; per OpenAI&apos;s API terms, data is not used to train models and is retained for up to 30 days for abuse monitoring)</Li>
               <Li><strong className="text-foreground">Vercel</strong> — hosting and serverless infrastructure</Li>
               <Li><strong className="text-foreground">Stripe</strong> — payment processing (when paid plans are introduced)</Li>
             </ul>
@@ -77,7 +77,7 @@ export default function PrivacyPage() {
           </Section>
 
           <Section title="Your rights (PDPA)">
-            <p>Under Taiwan's Personal Data Protection Act, you may:</p>
+            <p>Under Taiwan&apos;s Personal Data Protection Act, you may:</p>
             <ul className="space-y-1.5 mt-2">
               <Li>Request access to your data</Li>
               <Li>Request correction of inaccurate data</Li>

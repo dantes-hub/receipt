@@ -1,3 +1,6 @@
+import { captureException } from '@/lib/observability/error-tracking'
+import { logError, logInfo, logWarn } from '@/lib/observability/logger'
+
 const MOEA_API_URL = 'https://data.gcis.nat.gov.tw/od/data/api/236EE382-4942-41A9-BD03-CA0709025E7C'
 const MOEA_TIMEOUT_MS = 5000
 
@@ -29,12 +32,14 @@ export async function lookupCompanyByUbn(ubn: string): Promise<MoeaLookupResult>
   url.searchParams.set('$top', '1')
 
   try {
+    logInfo('receipt.moea.lookup_started', { ubn })
     const res = await fetch(url.toString(), {
       signal: AbortSignal.timeout(MOEA_TIMEOUT_MS),
       headers: { Accept: 'application/json' },
     })
 
     if (!res.ok) {
+      logWarn('receipt.moea.lookup_http_error', { ubn, status: res.status })
       return { found: false, error: `MOEA API returned ${res.status}` }
     }
 
@@ -49,10 +54,12 @@ export async function lookupCompanyByUbn(ubn: string): Promise<MoeaLookupResult>
     }
 
     if (!Array.isArray(data) || data.length === 0) {
+      logInfo('receipt.moea.lookup_not_found', { ubn })
       return { found: false }
     }
 
     const row = data[0]
+    logInfo('receipt.moea.lookup_found', { ubn, companyName: row.Company_Name })
     return {
       found: true,
       company: {
@@ -63,6 +70,11 @@ export async function lookupCompanyByUbn(ubn: string): Promise<MoeaLookupResult>
       },
     }
   } catch (error) {
+    logError('receipt.moea.lookup_failed', {
+      ubn,
+      error: error instanceof Error ? error.message : 'unknown-error',
+    })
+    captureException(error, { ubn, service: 'moea-lookup' })
     if (error instanceof Error && error.name === 'TimeoutError') {
       return { found: false, error: 'MOEA API 請求逾時' }
     }

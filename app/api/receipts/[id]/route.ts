@@ -3,43 +3,23 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { receiptCorrections, receipts } from '@/lib/db/schema'
+import {
+  extractedReceiptDataSchema,
+  parseExtractedReceiptData,
+  receiptReviewStatusSchema,
+  type ExtractedReceiptData,
+} from '@/lib/receipts/model'
 import { getReceiptDetail } from '@/lib/receipts/queries'
 import { createClient } from '@/lib/supabase/server'
 import { validateReceipt } from '@/lib/validation/receipt'
-import type { ExtractedReceiptData } from '@/types/receipt'
-
-const extractedReceiptDataSchema = z.object({
-  receiptType: z.enum(['uniform_invoice', 'receipt', 'other']).default('other'),
-  vendorName: z.string().trim(),
-  taxId: z.string().trim(),
-  invoiceNumber: z.string().trim(),
-  invoiceDate: z.string().trim(),
-  subtotal: z.number(),
-  tax: z.number(),
-  total: z.number(),
-  category: z.enum(['dining', 'transport', 'office', 'materials', 'other']),
-  lineItems: z.array(
-    z.object({
-      description: z.string(),
-      quantity: z.number().optional(),
-      unitPrice: z.number().optional(),
-      amount: z.number().optional(),
-    })
-  ).default([]),
-  notes: z.string().optional(),
-})
 
 const receiptUpdateSchema = z.object({
   extractedData: extractedReceiptDataSchema,
-  status: z.enum(['review', 'confirmed']).default('confirmed'),
+  status: receiptReviewStatusSchema.default('confirmed'),
 })
 
 function getErrorResponse(message: string, status: number) {
   return NextResponse.json({ error: message }, { status })
-}
-
-function parseExistingExtractedData(value: unknown): ExtractedReceiptData {
-  return extractedReceiptDataSchema.parse(value ?? {})
 }
 
 function toCorrectionEntries(options: {
@@ -138,7 +118,7 @@ export async function PATCH(
     return getErrorResponse('找不到該發票。', 404)
   }
 
-  const oldData = parseExistingExtractedData(receiptRow.extractedData)
+  const oldData = parseExtractedReceiptData(receiptRow.extractedData)
   const newData = payload.data.extractedData
   const validationReport = validateReceipt(newData)
   const correctionEntries = toCorrectionEntries({

@@ -1,33 +1,20 @@
 import OpenAI from 'openai'
 import { zodResponseFormat } from 'openai/helpers/zod'
 import { z } from 'zod'
-import type { ExtractedReceiptData, ReceiptCategory, ReceiptDocumentType } from '@/types/receipt'
+import {
+  extractedReceiptDataSchema,
+  extractedReceiptLineItemSchema,
+  receiptCategorySchema,
+  receiptConfidenceScoresSchema,
+  receiptDocumentTypeSchema,
+  type ExtractedReceiptData,
+  type ReceiptCategory,
+  type ReceiptConfidenceScores,
+} from '@/lib/receipts/model'
 import { rocToWestern } from '@/lib/validators'
 
 const DEFAULT_RECEIPT_MODEL = process.env.OPENAI_RECEIPT_MODEL ?? 'gpt-4o-2024-11-20'
 const CONFIDENCE_RETRY_THRESHOLD = 0.45
-
-const receiptCategorySchema = z.enum(['dining', 'transport', 'office', 'materials', 'other'])
-const receiptDocumentTypeSchema = z.enum(['uniform_invoice', 'receipt', 'other'])
-
-const extractedReceiptLineItemSchema = z.object({
-  description: z.string(),
-  quantity: z.number().nullable().optional(),
-  unitPrice: z.number().nullable().optional(),
-  amount: z.number().nullable().optional(),
-})
-
-const confidenceScoresSchema = z.object({
-  vendorName: z.number().min(0).max(1),
-  taxId: z.number().min(0).max(1),
-  invoiceNumber: z.number().min(0).max(1),
-  invoiceDate: z.number().min(0).max(1),
-  subtotal: z.number().min(0).max(1),
-  tax: z.number().min(0).max(1),
-  total: z.number().min(0).max(1),
-  category: z.number().min(0).max(1),
-  lineItems: z.number().min(0).max(1),
-})
 
 export const receiptExtractionSchema = z.object({
   receiptType: receiptDocumentTypeSchema,
@@ -41,11 +28,10 @@ export const receiptExtractionSchema = z.object({
   category: receiptCategorySchema,
   lineItems: z.array(extractedReceiptLineItemSchema),
   notes: z.string().optional().default(''),
-  confidenceScores: confidenceScoresSchema,
+  confidenceScores: receiptConfidenceScoresSchema,
 })
 
 export type ReceiptExtraction = z.infer<typeof receiptExtractionSchema>
-export type ReceiptConfidenceScores = ReceiptExtraction['confidenceScores']
 
 export interface ExtractReceiptInput {
   fileBuffer: Buffer
@@ -96,7 +82,7 @@ function normalizeLineItems(lineItems: ReceiptExtraction['lineItems']) {
 export function normalizeExtractionResult(result: ReceiptExtraction): ExtractedReceiptData {
   const isUniformInvoice = result.receiptType === 'uniform_invoice'
 
-  return {
+  return extractedReceiptDataSchema.parse({
     receiptType: result.receiptType,
     vendorName: result.vendorName.trim(),
     taxId: isUniformInvoice ? result.taxId.trim() : '',
@@ -108,7 +94,7 @@ export function normalizeExtractionResult(result: ReceiptExtraction): ExtractedR
     category: result.category as ReceiptCategory,
     lineItems: normalizeLineItems(result.lineItems),
     notes: result.notes?.trim() || undefined,
-  }
+  })
 }
 
 function getOpenAIClient() {

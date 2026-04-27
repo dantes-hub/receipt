@@ -1,21 +1,14 @@
-import type { ExtractedReceiptData, ReceiptValidationField, ReceiptValidationReport, ValidationResult } from '@/types/receipt'
+import {
+  createEmptyReceiptValidationFields,
+  type ExtractedReceiptData,
+  type ReceiptValidationField,
+  type ReceiptValidationReport,
+  type ValidationResult,
+} from '@/lib/receipts/model'
 import { validateInvoiceNumber, validateTaxCalculation, validateTaxId, getInvoicePeriod } from '@/lib/validators'
 import { lookupCompanyByUbn } from '@/lib/moea/lookup'
 
 type FieldValidationMap = Record<ReceiptValidationField, ValidationResult[]>
-
-function createEmptyFieldValidationMap(): FieldValidationMap {
-  return {
-    vendorName: [],
-    taxId: [],
-    invoiceNumber: [],
-    invoiceDate: [],
-    subtotal: [],
-    tax: [],
-    total: [],
-    category: [],
-  }
-}
 
 function addValidationResult(
   fields: FieldValidationMap,
@@ -221,7 +214,7 @@ export async function enrichWithMoea(
 }
 
 export function validateReceipt(extractedData: ExtractedReceiptData): ReceiptValidationReport {
-  const fields = createEmptyFieldValidationMap()
+  const fields = createEmptyReceiptValidationFields()
 
   validateVendorName(extractedData.vendorName, fields)
   validateInvoiceDate(extractedData.invoiceDate, fields)

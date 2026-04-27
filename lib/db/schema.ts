@@ -1,13 +1,13 @@
 import { pgTable, uuid, text, smallint, integer, boolean, timestamp, jsonb, pgEnum } from 'drizzle-orm/pg-core'
-import { receiptStatuses } from '@/types/receipt'
+import {
+  receiptDocumentTypeValues,
+  receiptProcessingJobStatusValues,
+  receiptStatusValues,
+} from '@/lib/receipts/model'
 
-export const receiptStatusEnum = pgEnum('receipt_status', receiptStatuses)
-
-export const receiptTypeEnum = pgEnum('receipt_type', [
-  'uniform_invoice',
-  'receipt',
-  'other',
-])
+export const receiptStatusEnum = pgEnum('receipt_status', receiptStatusValues)
+export const receiptTypeEnum = pgEnum('receipt_type', receiptDocumentTypeValues)
+export const receiptProcessingJobStatusEnum = pgEnum('receipt_processing_job_status', receiptProcessingJobStatusValues)
 
 export const profiles = pgTable('profiles', {
   id: uuid('id').primaryKey(),
@@ -70,4 +70,24 @@ export const exportBatches = pgTable('export_batches', {
   filePath: text('file_path'),
   receiptCount: integer('receipt_count'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
+export const receiptProcessingJobs = pgTable('receipt_processing_jobs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  receiptId: uuid('receipt_id').notNull(),
+  userId: uuid('user_id').notNull(),
+  storagePath: text('storage_path').notNull(),
+  originalFilename: text('original_filename').notNull(),
+  mimeType: text('mime_type').notNull(),
+  status: receiptProcessingJobStatusEnum('status').notNull().default('pending'),
+  attempts: integer('attempts').notNull().default(0),
+  maxAttempts: integer('max_attempts').notNull().default(3),
+  availableAt: timestamp('available_at', { withTimezone: true }).defaultNow().notNull(),
+  lockedAt: timestamp('locked_at', { withTimezone: true }),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+  lastAttemptAt: timestamp('last_attempt_at', { withTimezone: true }),
+  lastError: text('last_error'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })

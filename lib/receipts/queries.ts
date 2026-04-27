@@ -1,29 +1,15 @@
 import { and, desc, eq, gte, lte, lt } from 'drizzle-orm'
-import { z } from 'zod'
 import { db } from '@/lib/db'
 import { receipts } from '@/lib/db/schema'
-import type { ExtractedReceiptData, ReceiptCategory, ReceiptDocumentType, ReceiptStats, ReceiptStatus } from '@/types/receipt'
-
-const extractedReceiptDataSchema = z.object({
-  receiptType: z.enum(['uniform_invoice', 'receipt', 'other']).default('other'),
-  vendorName: z.string().default(''),
-  taxId: z.string().default(''),
-  invoiceNumber: z.string().default(''),
-  invoiceDate: z.string().default(''),
-  subtotal: z.number().default(0),
-  tax: z.number().default(0),
-  total: z.number().default(0),
-  category: z.enum(['dining', 'transport', 'office', 'materials', 'other']).default('other'),
-  lineItems: z.array(
-    z.object({
-      description: z.string(),
-      quantity: z.number().optional(),
-      unitPrice: z.number().optional(),
-      amount: z.number().optional(),
-    })
-  ).default([]),
-  notes: z.string().optional(),
-})
+import {
+  parseExtractedReceiptData,
+  parseReceiptConfidenceScores,
+  type ReceiptCategory,
+  type ReceiptConfidenceScores,
+  type ReceiptDocumentType,
+  type ReceiptStatus,
+} from '@/lib/receipts/model'
+import type { ReceiptStats } from '@/types/receipt'
 
 export interface ReceiptListItem {
   id: string
@@ -46,38 +32,8 @@ export interface ReceiptExportItem extends ReceiptListItem {
 }
 
 export interface ReceiptDetailItem extends ReceiptExportItem {
-  confidenceScores: {
-    vendorName: number
-    taxId: number
-    invoiceNumber: number
-    invoiceDate: number
-    subtotal: number
-    tax: number
-    total: number
-    category: number
-    lineItems: number
-  }
+  confidenceScores: ReceiptConfidenceScores
   validationResults: unknown
-}
-
-const confidenceScoresSchema = z.object({
-  vendorName: z.number().default(0),
-  taxId: z.number().default(0),
-  invoiceNumber: z.number().default(0),
-  invoiceDate: z.number().default(0),
-  subtotal: z.number().default(0),
-  tax: z.number().default(0),
-  total: z.number().default(0),
-  category: z.number().default(0),
-  lineItems: z.number().default(0),
-})
-
-function parseExtractedData(value: unknown): ExtractedReceiptData {
-  return extractedReceiptDataSchema.parse(value ?? {})
-}
-
-function parseConfidenceScores(value: unknown): ReceiptDetailItem['confidenceScores'] {
-  return confidenceScoresSchema.parse(value ?? {})
 }
 
 function getMonthRange(month: string) {
@@ -101,7 +57,7 @@ function toReceiptListItem(row: {
   receiptType: ReceiptDocumentType | null
   extractedData: unknown
 }): ReceiptListItem {
-  const extractedData = parseExtractedData(row.extractedData)
+  const extractedData = parseExtractedReceiptData(row.extractedData)
 
   return {
     id: row.id,
@@ -191,7 +147,7 @@ export async function getReceiptStats(userId: string, month: string): Promise<Re
 
   return rows.reduce<ReceiptStats>(
     (acc, row) => {
-      const extractedData = parseExtractedData(row.extractedData)
+      const extractedData = parseExtractedReceiptData(row.extractedData)
       acc.totalThisMonth += 1
       if (row.status === 'review') {
         acc.pendingReview += 1
@@ -244,7 +200,7 @@ export async function getReceiptsForExport(options: {
     .orderBy(desc(receipts.createdAt))
 
   return rows.map((row) => {
-    const extractedData = parseExtractedData(row.extractedData)
+    const extractedData = parseExtractedReceiptData(row.extractedData)
 
     return {
       id: row.id,
@@ -285,7 +241,7 @@ export async function getReceiptDetail(userId: string, receiptId: string): Promi
     return null
   }
 
-  const extractedData = parseExtractedData(row.extractedData)
+  const extractedData = parseExtractedReceiptData(row.extractedData)
 
   return {
     id: row.id,
@@ -302,7 +258,7 @@ export async function getReceiptDetail(userId: string, receiptId: string): Promi
     subtotal: extractedData.subtotal,
     tax: extractedData.tax,
     notes: extractedData.notes ?? '',
-    confidenceScores: parseConfidenceScores(row.confidenceScores),
+    confidenceScores: parseReceiptConfidenceScores(row.confidenceScores),
     validationResults: row.validationResults,
   }
 }
